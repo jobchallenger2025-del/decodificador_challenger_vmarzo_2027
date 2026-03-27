@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redimensionador de Imágenes a WebP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        * {
+            cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="%2360A5FA" /><stop offset="100%" stop-color="%231E40AF" /></linearGradient></defs><path d="M0 0 L24 10 L10 24 Z" fill="url(%23g)" stroke="white" stroke-width="1.5" /></svg>'), auto;
+        }
+
+        .image-preview {
+            transition: all 0.3s ease;
+        }
+
+        .image-preview:hover {
+            transform: scale(1.02);
+        }
+
+        .upload-zone {
+            transition: all 0.3s ease;
+        }
+
+        .upload-zone:hover {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+
+        /* Drag & Drop Styles */
+        .draggable-image {
+            cursor: move;
+            transition: all 0.3s ease;
+        }
+
+        .draggable-image:hover {
+            transform: scale(1.02);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+
+        .drag-over {
+            border: 3px dashed #3b82f6 !important;
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        .drag-handle {
+            cursor: move;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .drag-handle:hover {
+            opacity: 1;
+        }
+
+        /* Size Checkbox Cards */
+        .size-card {
+            position: relative;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .size-card input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .size-card-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 10px 6px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            background: #f9fafb;
+            transition: all 0.25s ease;
+            user-select: none;
+        }
+
+        .size-card input:checked ~ .size-card-inner {
+            border-color: #3b82f6;
+            background: #eff6ff;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+        }
+
+        .size-card-inner .check-icon {
+            display: none;
+            color: #3b82f6;
+        }
+
+        .size-card input:checked ~ .size-card-inner .check-icon {
+            display: block;
+        }
+
+        .size-card-inner .size-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #374151;
+            line-height: 1.2;
+            text-align: center;
+        }
+
+        .size-card input:checked ~ .size-card-inner .size-label {
+            color: #1d4ed8;
+        }
+
+        .size-card:hover .size-card-inner {
+            border-color: #93c5fd;
+            background: #f0f9ff;
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+
+<body class="min-h-screen py-10 px-4 font-sans selection:bg-blue-200">
+    <!-- Fixed Background Layer -->
+    <div class="fixed inset-0 -z-10">
+        <div class="absolute inset-0 bg-gradient-to-b from-white/40 via-white/20 to-transparent z-10"></div>
+        <img src="./access/imagenes/SVG/imagen-aprobada.jpg" alt="Background"
+            class="w-full h-full object-cover opacity-90">
+    </div>
+
+    <div class="max-w-4xl mx-auto relative z-10">
+        <!-- Header -->
+        <div class="text-center mb-10 pt-4">
+            <img src="./access/imagenes/SVG/60-anos-azul.svg" alt="Challenger Logo"
+                class="mx-auto mb-6 h-20 object-contain drop-shadow-sm">
+            <h1 class="text-5xl font-extrabold text-gray-800 mb-2">Redimensionador de Imágenes</h1>
+            <p class="text-blue-700 text-lg font-semibold">Departamento de publicidad challenger</p>
+            <img src="./access/imagenes/SVG/colombia-ch.svg" alt="La Empresa de Colombia"
+                class="mx-auto mt-4 h-12 object-contain">
+        </div>
+
+        <!-- Input Fields -->
+        <div
+            class="bg-white/90 backdrop-blur-lg rounded-2xl shadow-2xl p-8 mb-8 border border-white/20 transition-all duration-300 hover:shadow-blue-500/10">
+            <div class="mb-8">
+                <label for="referenciaIndustrial" class="block text-gray-800 font-bold text-lg mb-2">Referencia
+                    industrial</label>
+                <input type="text" id="referenciaIndustrial" placeholder="Ej: CRT2024" pattern="^[A-Za-z]+[0-9]+$"
+                    class="w-full px-5 py-4 bg-white/50 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none text-xl transition-all">
+                <p class="text-sm text-gray-600 mt-2 font-medium">Debe comenzar con letras y terminar en números</p>
+            </div>
+
+            <div>
+                <label for="inemNumber" class="block text-gray-700 font-bold text-lg mb-2">Ingrese el número
+                    EAN</label>
+                <input type="text" id="inemNumber" maxlength="15" pattern="[0-9]*" inputmode="numeric"
+                    placeholder="Ej: 83216767777"
+                    class="w-full px-5 py-4 bg-white/50 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none text-xl transition-all">
+                <p class="text-sm text-gray-600 mt-2 font-medium">Solo números, máximo 15 caracteres</p>
+            </div>
+
+            <div>
+                <label for="outputFormat" class="block text-gray-700 font-bold text-lg mb-2">Formato de Salida</label>
+                <select id="outputFormat"
+                    class="w-full px-5 py-4 bg-white/50 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none text-xl transition-all appearance-none cursor-pointer">
+                    <option value="image/webp">WebP (Recomendado)</option>
+                    <option value="image/jpeg">JPG</option>
+                    <option value="image/png">PNG</option>
+                </select>
+                <p class="text-sm text-gray-600 mt-2 font-medium">Selecciona el formato para las imágenes
+                    redimensionadas</p>
+            </div>
+
+            <!-- Size Selector -->
+            <div class="mt-6">
+                <label class="block text-gray-700 font-bold text-lg mb-3">Tamaños a descargar</label>
+                <div class="grid grid-cols-3 sm:grid-cols-6 gap-3" id="sizeCheckboxes">
+                    <label class="size-card">
+                        <input type="checkbox" value="800" checked>
+                        <div class="size-card-inner">
+                            <svg class="check-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                            <span class="size-label">800×800</span>
+                        </div>
+                    </label>
+                    <label class="size-card">
+                        <input type="checkbox" value="600" checked>
+                        <div class="size-card-inner">
+                            <svg class="check-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                            <span class="size-label">600×600</span>
+                        </div>
+                    </label>
+                    <label class="size-card">
+                        <input type="checkbox" value="1000" checked>
+                        <div class="size-card-inner">
+                            <svg class="check-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                            <span class="size-label">1000×1000</span>
+                        </div>
+                    </label>
+                    <label class="size-card">
+                        <input type="checkbox" value="1200" checked>
+                        <div class="size-card-inner">
+                            <svg class="check-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                            <span class="size-label">1200×1200</span>
+                        </div>
+                    </label>
+                    <label class="size-card">
+                        <input type="checkbox" value="1400" checked>
+                        <div class="size-card-inner">
+                            <svg class="check-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                            <span class="size-label">1400×1400</span>
+                        </div>
+                    </label>
+                    <label class="size-card">
+                        <input type="checkbox" value="2000" checked>
+                        <div class="size-card-inner">
+                            <svg class="check-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                            <span class="size-label">2000×2000</span>
+                        </div>
+                    </label>
+                </div>
+                <p class="text-sm text-gray-500 mt-2 font-medium">Selecciona uno o varios tamaños para incluir en la descarga</p>
+            </div>
+        </div>
+
+        <!-- Upload Zone -->
+        <div class="bg-white/90 backdrop-blur-lg rounded-2xl shadow-2xl p-10 mb-8 border border-white/20">
+            <div class="upload-zone border-4 border-dashed border-gray-300 rounded-2xl p-16 text-center cursor-pointer transition-all duration-300 hover:border-blue-500 hover:bg-blue-50/50 group"
+                id="uploadZone">
+                <div
+                    class="bg-blue-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg">
+                    <svg class="h-10 w-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                        </path>
+                    </svg>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">Haz clic o arrastra imágenes aquí</h3>
+                <p class="text-gray-500 font-medium">Formatos soportados: JPG, PNG, GIF, BMP (Máximo 12 imágenes)</p>
+                <input type="file" id="fileInput" class="hidden" multiple accept="image/*">
+            </div>
+        </div>
+
+        <!-- Preview and Download Section -->
+        <div id="resultsSection" class="hidden space-y-8 animate-fade-in">
+            <div class="bg-white/95 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-white/20">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    Descarga tus Imágenes
+                </h2>
+                <div class="grid grid-cols-1 gap-4" id="downloadButtons"></div>
+            </div>
+
+            <div class="bg-white/95 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-white/20">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z">
+                        </path>
+                    </svg>
+                    Vista Previa de Imágenes
+                </h2>
+                <div id="imagesGrid" class="grid grid-cols-2 md:grid-cols-4 gap-6"></div>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator"
+            class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-8 text-center">
+                <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+                <p class="text-gray-700 text-lg">Procesando imágenes...</p>
+            </div>
+        </div>
+
+        <!-- Success Overlay -->
+        <div id="successOverlay" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center transition-opacity duration-300 opacity-0">
+            <div class="bg-white rounded-3xl shadow-2xl p-10 transform scale-90 transition-transform duration-300 text-center relative overflow-hidden max-w-sm w-full mx-4">
+                <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-400 via-blue-600 to-blue-400"></div>
+                <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h2 class="text-3xl font-extrabold text-gray-800 mb-2">¡Felicidades!</h2>
+                <p class="text-gray-600 font-medium text-lg">Tus imágenes se han descargado con éxito.</p>
+                <button id="closeSuccess" class="mt-8 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl transition-colors w-full">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Marquee Section -->
+
+
+    <script>
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const resultsSection = document.getElementById('resultsSection');
+        const imagesGrid = document.getElementById('imagesGrid');
+        const downloadButtons = document.getElementById('downloadButtons');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const inemInput = document.getElementById('inemNumber');
+        const referenciaInput = document.getElementById('referenciaIndustrial');
+        const formatInput = document.getElementById('outputFormat');
+
+        const sizes = [800, 1000, 600, 1200, 1400, 2000];
+        let processedImages = {}; // Store images by size
+        let originalImages = []; // Store original uploaded images for preview
+
+        // Validate INEM input - only allow numbers
+        inemInput.addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        });
+
+        // Validate Referencia Industrial - must start with letters and end with numbers
+        referenciaInput.addEventListener('input', (e) => {
+            // Allow only letters and numbers, no special characters
+            e.target.value = e.target.value.replace(/[^A-Za-z0-9]/g, '');
+        });
+
+        // Click to upload
+        uploadZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Drag and drop
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('border-blue-500', 'bg-blue-50');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('border-blue-500', 'bg-blue-50');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('border-blue-500', 'bg-blue-50');
+            const files = Array.from(e.dataTransfer.files);
+            if (files.length > 0) {
+                handleFiles(files);
+            }
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                const files = Array.from(e.target.files);
+                handleFiles(files);
+            }
+        });
+
+        function handleFiles(files) {
+            // Validate Referencia Industrial first
+            const referenciaIndustrial = referenciaInput.value.trim();
+            if (!referenciaIndustrial) {
+                alert('Por favor, ingrese la referencia industrial antes de subir las imágenes.');
+                referenciaInput.focus();
+                return;
+            }
+
+            // Validate format: must start with letters and end with numbers
+            const referenciaPattern = /^[A-Za-z]+[0-9]+$/;
+            if (!referenciaPattern.test(referenciaIndustrial)) {
+                alert('La referencia industrial debe comenzar con letras y terminar en números (ej: REF2024001).');
+                referenciaInput.focus();
+                return;
+            }
+
+            // Validate INEM number
+            const inemNumber = inemInput.value.trim();
+            if (!inemNumber) {
+                alert('Por favor, ingrese el número EAN antes de subir las imágenes.');
+                inemInput.focus();
+                return;
+            }
+
+            if (inemNumber.length > 15) {
+                alert('El número EAN no puede tener más de 15 caracteres.');
+                inemInput.focus();
+                return;
+            }
+
+            // Filter only image files
+            const imageFiles = files.filter(file => file.type.startsWith('image/'));
+
+            if (imageFiles.length === 0) {
+                alert('Por favor, selecciona al menos un archivo de imagen válido.');
+                return;
+            }
+
+            if (imageFiles.length > 12) {
+                alert('Máximo 12 imágenes permitidas. Se procesarán las primeras 12.');
+                imageFiles.splice(12);
+            }
+
+            // Reset processed images and original images
+            processedImages = {};
+            originalImages = [];
+            sizes.forEach(size => {
+                processedImages[size] = [];
+            });
+
+            loadingIndicator.classList.remove('hidden');
+
+            // Process all images
+            let processedCount = 0;
+            imageFiles.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        // Create unique ID using timestamp + index
+                        const uniqueId = Date.now() + index;
+
+                        // Store original image for preview with unique ID
+                        originalImages.push({
+                            dataUrl: e.target.result,
+                            index: index + 1,
+                            id: uniqueId
+                        });
+
+                        const format = formatInput.value;
+                        processImage(img, index, inemNumber, format, uniqueId);
+                        processedCount++;
+
+                        // When all images are processed
+                        if (processedCount === imageFiles.length) {
+                            loadingIndicator.classList.add('hidden');
+                            displayResults();
+                        }
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function processImage(img, index, inemNumber, format, parentId) {
+            sizes.forEach(size => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                // Set canvas size
+                canvas.width = size;
+                canvas.height = size;
+
+                // Calculate scaling to cover the entire canvas
+                const scale = Math.max(size / img.width, size / img.height);
+                const scaledWidth = img.width * scale;
+                const scaledHeight = img.height * scale;
+
+                // Center the image
+                const x = (size - scaledWidth) / 2;
+                const y = (size - scaledHeight) / 2;
+
+                // Fill with white background
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, size, size);
+
+                // Draw image
+                ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+
+                // Convert to selected format and store
+                const webpDataUrl = canvas.toDataURL(format, 0.9);
+
+                let extension = 'webp';
+                if (format === 'image/jpeg') extension = 'jpg';
+                else if (format === 'image/png') extension = 'png';
+
+                processedImages[size].push({
+                    dataUrl: webpDataUrl,
+                    filename: `${inemNumber}.${extension}`,
+                    index: index,
+                    extension: extension,
+                    parentId: parentId  // Cross-reference to original image
+                });
+            });
+        }
+
+        // Drag & Drop Variables
+        let draggedElement = null;
+        let draggedIndex = null;
+
+        function displayResults() {
+            imagesGrid.innerHTML = '';
+            downloadButtons.innerHTML = '';
+
+            // Create single download button for all sizes
+            const button = document.createElement('button');
+            button.className = 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-6 px-8 rounded-xl transition duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 w-full';
+            button.innerHTML = `
+                <div class="flex flex-col items-center gap-3">
+                    <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                    </svg>
+                    <span class="text-2xl font-bold">Descargar Todos los Tamaños</span>
+                    <span class="text-sm opacity-90">6 tamaños en el formato seleccionado</span>
+                </div>
+            `;
+            button.onclick = () => downloadAllSizes();
+            downloadButtons.appendChild(button);
+
+            // Display original uploaded images in order with drag & drop
+            originalImages.forEach((imgData, index) => {
+                const preview = document.createElement('div');
+                preview.className = 'draggable-image relative aspect-square overflow-hidden rounded-lg bg-white border-2 border-gray-200 shadow-sm';
+                preview.draggable = true;
+                preview.dataset.index = index;
+
+                preview.innerHTML = `
+                    <div class="absolute top-2 left-2 z-10 bg-white/90 rounded-full p-2 drag-handle shadow-md">
+                        <svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 3a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM10 8.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM11.5 15.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z"></path>
+                        </svg>
+                    </div>
+                    <img src="${imgData.dataUrl}" alt="Imagen ${index + 1}" class="w-full h-full object-cover">
+                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+                        <p class="text-center text-sm font-semibold text-white">Imagen ${index + 1}</p>
+                    </div>
+                `;
+
+                // Drag event listeners
+                preview.addEventListener('dragstart', handleDragStart);
+                preview.addEventListener('dragover', handleDragOver);
+                preview.addEventListener('dragenter', handleDragEnter);
+                preview.addEventListener('dragleave', handleDragLeave);
+                preview.addEventListener('drop', handleDrop);
+                preview.addEventListener('dragend', handleDragEnd);
+
+                imagesGrid.appendChild(preview);
+            });
+
+            resultsSection.classList.remove('hidden');
+            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // Drag & Drop Event Handlers
+        function handleDragStart(e) {
+            draggedElement = e.currentTarget;
+            draggedIndex = parseInt(e.currentTarget.dataset.index);
+            e.currentTarget.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+        }
+
+        function handleDragOver(e) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+            e.dataTransfer.dropEffect = 'move';
+            return false;
+        }
+
+        function handleDragEnter(e) {
+            if (e.currentTarget !== draggedElement) {
+                e.currentTarget.classList.add('drag-over');
+            }
+        }
+
+        function handleDragLeave(e) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            if (e.stopPropagation) {
+                e.stopPropagation();
+            }
+
+            e.currentTarget.classList.remove('drag-over');
+
+            const dropIndex = parseInt(e.currentTarget.dataset.index);
+
+            if (draggedIndex !== dropIndex) {
+                // Reorder the originalImages array
+                const draggedItem = originalImages[draggedIndex];
+                originalImages.splice(draggedIndex, 1);
+                originalImages.splice(dropIndex, 0, draggedItem);
+
+                // Re-render the grid with new order
+                displayResults();
+            }
+
+            return false;
+        }
+
+        function handleDragEnd(e) {
+            e.currentTarget.classList.remove('dragging');
+
+            // Remove drag-over class from all elements
+            document.querySelectorAll('.drag-over').forEach(el => {
+                el.classList.remove('drag-over');
+            });
+        }
+
+        async function downloadAllSizes() {
+            // Get selected sizes from checkboxes
+            const checkedBoxes = document.querySelectorAll('#sizeCheckboxes input[type="checkbox"]:checked');
+            const selectedSizes = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+
+            if (selectedSizes.length === 0) {
+                alert('Por favor, selecciona al menos un tamaño para descargar.');
+                return;
+            }
+
+            const zip = new JSZip();
+            const inemNumber = inemInput.value.trim();
+            const referenciaIndustrial = referenciaInput.value.trim();
+
+            // Create subfolders only for selected sizes
+            const sizeFolders = {};
+            selectedSizes.forEach(size => {
+                sizeFolders[size] = zip.folder(`${size}x${size}`);
+            });
+
+            // Use originalImages order (which reflects drag & drop reordering)
+            originalImages.forEach((originalImg, newIndex) => {
+                const imageId = originalImg.id;
+
+                // Only process selected sizes
+                selectedSizes.forEach(size => {
+                    const processedImg = processedImages[size].find(img => img.parentId === imageId);
+
+                    if (processedImg) {
+                        const base64Data = processedImg.dataUrl.split(',')[1];
+                        const binaryData = atob(base64Data);
+                        const arrayBuffer = new Uint8Array(binaryData.length);
+                        for (let j = 0; j < binaryData.length; j++) {
+                            arrayBuffer[j] = binaryData.charCodeAt(j);
+                        }
+
+                        const paddedIndex = String(newIndex + 1).padStart(3, '0');
+                        const filename = `${inemNumber}_${paddedIndex}.${processedImg.extension}`;
+                        sizeFolders[size].file(filename, arrayBuffer, { binary: true });
+                    }
+                });
+            });
+
+            // Generate and download zip with Referencia Industrial as name
+            const content = await zip.generateAsync({ type: 'blob' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = `${referenciaIndustrial}.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+
+            // Trigger confetti and success overlay
+            triggerSuccessAnimation();
+        }
+
+        function triggerSuccessAnimation() {
+            // Confetti
+            const duration = 3 * 1000;
+            const animationEnd = Date.now() + duration;
+            const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 101 };
+
+            function randomInRange(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+
+            const interval = setInterval(function() {
+                const timeLeft = animationEnd - Date.now();
+
+                if (timeLeft <= 0) {
+                    return clearInterval(interval);
+                }
+
+                const particleCount = 50 * (timeLeft / duration);
+                
+                confetti(Object.assign({}, defaults, { particleCount,
+                    origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
+                }));
+                confetti(Object.assign({}, defaults, { particleCount,
+                    origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
+                }));
+            }, 250);
+
+            // Show Overlay
+            const overlay = document.getElementById('successOverlay');
+            const overlayContent = overlay.querySelector('div');
+            
+            overlay.classList.remove('hidden');
+            setTimeout(() => {
+                overlay.classList.remove('opacity-0');
+                overlayContent.classList.remove('scale-90');
+                overlayContent.classList.add('scale-100');
+            }, 10);
+
+            // Auto close after 5 seconds
+            setTimeout(closeSuccessOverlay, 5000);
+        }
+
+        function closeSuccessOverlay() {
+            const overlay = document.getElementById('successOverlay');
+            if(overlay.classList.contains('hidden')) return;
+            const overlayContent = overlay.querySelector('div');
+            
+            overlay.classList.add('opacity-0');
+            overlayContent.classList.remove('scale-100');
+            overlayContent.classList.add('scale-90');
+            
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+            }, 300);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const closeBtn = document.getElementById('closeSuccess');
+            if(closeBtn) {
+                closeBtn.addEventListener('click', closeSuccessOverlay);
+            }
+        });
+    </script>
+    <!-- Challenger 60 Años Marquee -->
+    <style>
+        .challenger-marquee-container {
+            width: 100%;
+            overflow: hidden;
+            position: relative;
+            background: transparent;
+            padding: 40px 0;
+            margin-top: 2rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .challenger-marquee-content {
+            display: flex;
+            width: max-content;
+            /* Velocidad: Cambia 15s para hacerlo más rápido o lento */
+            animation: challenger-scroll 15s linear infinite;
+        }
+
+        .challenger-marquee-content:hover {
+            animation-play-state: paused;
+        }
+
+        .challenger-logo-group {
+            display: flex;
+            align-items: center;
+            padding-right: 0;
+        }
+
+        .challenger-logo-item {
+            position: relative;
+            /* Espaciado: Modifica padding: 0 100px para cambiar la distancia entre logos */
+            padding: 0 100px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s ease;
+        }
+
+        .challenger-logo-item img {
+            /* Tamaño: Ajusta los valores height/width */
+            height: 160px;
+            width: 893px;
+            /* Proporción exacta del SVG: 681.82/122.37 * 160 */
+            object-fit: contain;
+            transition: opacity 0.3s ease;
+            display: block;
+        }
+
+        .challenger-logo-item .logo-hover {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0;
+            height: 160px;
+            width: 893px;
+        }
+
+        .challenger-logo-item:hover .logo-hover {
+            opacity: 1;
+        }
+
+        .challenger-logo-item:hover .logo-base {
+            opacity: 0;
+        }
+
+        /* Texto opcional si se requiere, aunque el usuario solo mencionó logos y "Ajusta los valores de font-size para el texto" 
+           Asumo que podría haber texto acompañando o se refiere al tamaño del SVG si tuviera texto.
+           Por ahora solo logos según instrucciones de ruta. */
+
+        @keyframes challenger-scroll {
+            0% {
+                transform: translateX(0);
+            }
+
+            100% {
+                transform: translateX(-50%);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .challenger-logo-item {
+                padding: 0 50px;
+            }
+
+            .challenger-logo-item img {
+                height: 120px;
+                width: 669px;
+                /* Proporción exacta del SVG: 681.82/122.37 * 120 */
+            }
+
+            .challenger-logo-item .logo-hover {
+                height: 120px;
+                width: 669px;
+            }
+        }
+    </style>
+
+    <div class="challenger-marquee-container">
+        <div class="challenger-marquee-content">
+            <!-- Primera Vuelta -->
+            <div class="challenger-logo-group">
+                <!-- Repetimos el logo varias veces para llenar la pantalla y dar efecto infinito -->
+                <div class="challenger-logo-item">
+                    <img src="./access/imagenes/SVG/60-anos-gris.svg" alt="Challenger 60 años Gris" class="logo-base">
+                    <img src="./access/imagenes/SVG/60-anos-azul.svg" alt="Challenger 60 años Azul" class="logo-hover">
+                </div>
+                <div class="challenger-logo-item">
+                    <img src="./access/imagenes/SVG/60-anos-gris.svg" alt="Challenger 60 años Gris" class="logo-base">
+                    <img src="./access/imagenes/SVG/60-anos-azul.svg" alt="Challenger 60 años Azul" class="logo-hover">
+                </div>
+                <div class="challenger-logo-item">
+                    <img src="./access/imagenes/SVG/60-anos-gris.svg" alt="Challenger 60 años Gris" class="logo-base">
+                    <img src="./access/imagenes/SVG/60-anos-azul.svg" alt="Challenger 60 años Azul" class="logo-hover">
+                </div>
+                <div class="challenger-logo-item">
+                    <img src="./access/imagenes/SVG/60-anos-gris.svg" alt="Challenger 60 años Gris" class="logo-base">
+                    <img src="./access/imagenes/SVG/60-anos-azul.svg" alt="Challenger 60 años Azul" class="logo-hover">
+                </div>
+            </div>
+            <!-- Segunda Vuelta (Clon para efecto infinito) -->
+            <div class="challenger-logo-group">
+                <div class="challenger-logo-item">
+                    <img src="./access/imagenes/SVG/60-anos-gris.svg" alt="Challenger 60 años Gris" class="logo-base">
+                    <img src="./access/imagenes/SVG/60-anos-azul.svg" alt="Challenger 60 años Azul" class="logo-hover">
+                </div>
+                <div class="challenger-logo-item">
+                    <img src="./access/imagenes/SVG/60-anos-gris.svg" alt="Challenger 60 años Gris" class="logo-base">
+                    <img src="./access/imagenes/SVG/60-anos-azul.svg" alt="Challenger 60 años Azul" class="logo-hover">
+                </div>
+                <div class="challenger-logo-item">
+                    <img src="./access/imagenes/SVG/60-anos-gris.svg" alt="Challenger 60 años Gris" class="logo-base">
+                    <img src="./access/imagenes/SVG/60-anos-azul.svg" alt="Challenger 60 años Azul" class="logo-hover">
+                </div>
+                <div class="challenger-logo-item">
+                    <img src="./access/imagenes/SVG/60-anos-gris.svg" alt="Challenger 60 años Gris" class="logo-base">
+                    <img src="./access/imagenes/SVG/60-anos-azul.svg" alt="Challenger 60 años Azul" class="logo-hover">
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
